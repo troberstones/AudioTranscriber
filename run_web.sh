@@ -1,4 +1,5 @@
 #!/bin/bash
+# Starts the Gradio web UI (legacy — use run.sh for the desktop app)
 set -e
 
 if [ ! -d "venv" ]; then
@@ -7,4 +8,4 @@ if [ ! -d "venv" ]; then
 fi
 
 source venv/bin/activate
-python gui.py
+python app.py
