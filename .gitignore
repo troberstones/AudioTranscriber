@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Outputs
+outputs/
+
+# macOS
+.DS_Store
+
+# Model cache
+*.bin
+*.pt
