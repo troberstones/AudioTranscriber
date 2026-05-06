@@ -22,3 +22,4 @@ outputs/
 *.json
 *.md
 !README.md
+!CLAUDE.md
