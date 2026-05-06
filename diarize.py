@@ -1,12 +1,14 @@
 """
 Core WhisperX diarization pipeline.
 Supports two transcription backends:
-  - "faster-whisper"  CPU (ctranslate2 / int8) — default whisperx backend
-  - "mlx"             Apple Silicon GPU via MLX — uses Metal/Neural Engine
+  - "faster-whisper"  CPU (ctranslate2 / int8) — works on all platforms
+  - "mlx"             Apple Silicon GPU via MLX — macOS only
 """
 
 import gc
 import json
+import platform
+import sys
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
@@ -16,7 +18,10 @@ import torch
 import whisperx
 from whisperx.diarize import DiarizationPipeline, assign_word_speakers
 
-# Maps model size names → mlx-community HuggingFace repos
+IS_MACOS   = sys.platform == "darwin"
+IS_WINDOWS = sys.platform == "win32"
+
+# Maps model size names → mlx-community HuggingFace repos (macOS only)
 MLX_REPOS = {
     "tiny":     "mlx-community/whisper-tiny-mlx",
     "base":     "mlx-community/whisper-base-mlx",
@@ -26,25 +31,36 @@ MLX_REPOS = {
     "large-v3": "mlx-community/whisper-large-v3-mlx",
 }
 
+def importlib_check(name: str) -> bool:
+    import importlib.util
+    return importlib.util.find_spec(name) is not None
+
+
+MLX_AVAILABLE = IS_MACOS and importlib_check("mlx_whisper")
+
 
 def get_device() -> tuple[str, str]:
     """
     Returns (whisper_device, pyannote_device).
-    ctranslate2 doesn't support MPS, so whisper always uses CPU unless
-    the caller has selected the MLX backend (handled separately).
-    pyannote.audio supports MPS.
+    - faster-whisper (ctranslate2) supports CPU and CUDA, not MPS.
+    - pyannote.audio supports MPS (macOS) and CUDA (Windows/Linux).
+    - MLX backend handles its own device selection internally.
     """
-    if torch.backends.mps.is_available():
-        return "cpu", "mps"
+    if torch.cuda.is_available():
+        return "cuda", "cuda"
+    if IS_MACOS and torch.backends.mps.is_available():
+        return "cpu", "mps"   # ctranslate2 can't use MPS; pyannote can
     return "cpu", "cpu"
 
 
 def _free(*objs):
-    """Delete models and flush GPU/MPS memory."""
+    """Delete models and flush GPU memory."""
     for obj in objs:
         del obj
     gc.collect()
-    if torch.backends.mps.is_available():
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif IS_MACOS and torch.backends.mps.is_available():
         torch.mps.empty_cache()
 
 

@@ -16,6 +16,9 @@ outputs/
 # macOS
 .DS_Store
 
-# Model cache
-*.bin
-*.pt
+# Audio files and logs
+*.m4a
+*.wav
+*.json
+*.md
+!README.md

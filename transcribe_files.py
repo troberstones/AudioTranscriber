@@ -5,12 +5,16 @@ Usage: transcribeFiles [options] file1.m4a file2.mp3 *.wav
 """
 
 import argparse
+import importlib.util
 import os
 import sys
 import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+_MLX_AVAILABLE = sys.platform == "darwin" and importlib.util.find_spec("mlx_whisper") is not None
+_DEFAULT_BACKEND = "mlx" if _MLX_AVAILABLE else "faster-whisper"
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -116,9 +120,12 @@ examples:
 
     p.add_argument(
         "--backend",
-        default="mlx",
+        default=_DEFAULT_BACKEND,
         choices=["mlx", "faster-whisper"],
-        help="transcription backend: mlx (Apple Silicon GPU) or faster-whisper (CPU). Default: mlx",
+        help=(
+            "transcription backend: mlx (Apple Silicon GPU, macOS only) "
+            f"or faster-whisper (CPU/CUDA, all platforms). Default: {_DEFAULT_BACKEND}"
+        ),
     )
 
     p.add_argument(

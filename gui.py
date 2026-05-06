@@ -13,9 +13,32 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
+import torch
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
+
+IS_MACOS   = sys.platform == "darwin"
+IS_WINDOWS = sys.platform == "win32"
+
+# MLX is only available on Apple Silicon
+def _mlx_available() -> bool:
+    if not IS_MACOS:
+        return False
+    import importlib.util
+    return importlib.util.find_spec("mlx_whisper") is not None
+
+MLX_AVAILABLE = _mlx_available()
+
+
+def open_path(path: str):
+    """Open a file or folder in the system file manager / default app."""
+    if IS_MACOS:
+        subprocess.Popen(["open", path])
+    elif IS_WINDOWS:
+        os.startfile(path)
+    else:
+        subprocess.Popen(["xdg-open", path])
 
 WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
 LANGUAGES = [
@@ -34,7 +57,7 @@ class WisperXApp:
         # ── State variables ───────────────────────────────────────────────────
         self.audio_file    = tk.StringVar()
         self.hf_token      = tk.StringVar(value=os.getenv("HF_TOKEN", ""))
-        self.backend       = tk.StringVar(value="mlx")
+        self.backend       = tk.StringVar(value="mlx" if MLX_AVAILABLE else "faster-whisper")
         self.model         = tk.StringVar(value="large-v2")
         self.language      = tk.StringVar(value="Auto")
         self.auto_speakers = tk.BooleanVar(value=True)
@@ -86,10 +109,16 @@ class WisperXApp:
         be_row = ttk.Frame(settings_lf)
         be_row.pack(fill=tk.X, pady=2)
         ttk.Label(be_row, text="Backend:", width=12, anchor=tk.W).pack(side=tk.LEFT)
-        ttk.Radiobutton(
-            be_row, text="Apple Silicon GPU (MLX)",
-            variable=self.backend, value="mlx"
-        ).pack(side=tk.LEFT)
+        if MLX_AVAILABLE:
+            ttk.Radiobutton(
+                be_row, text="Apple Silicon GPU (MLX)",
+                variable=self.backend, value="mlx"
+            ).pack(side=tk.LEFT)
+        if torch.cuda.is_available():
+            ttk.Radiobutton(
+                be_row, text="CUDA GPU",
+                variable=self.backend, value="faster-whisper"
+            ).pack(side=tk.LEFT, padx=(0 if not MLX_AVAILABLE else 12, 0))
         ttk.Radiobutton(
             be_row, text="CPU (faster-whisper)",
             variable=self.backend, value="faster-whisper"
@@ -254,15 +283,15 @@ class WisperXApp:
 
     def _open_md(self):
         if self.result_md_path:
-            subprocess.Popen(["open", self.result_md_path])
+            open_path(self.result_md_path)
 
     def _open_json(self):
         if self.result_json_path:
-            subprocess.Popen(["open", self.result_json_path])
+            open_path(self.result_json_path)
 
     def _open_folder(self):
         if self.result_md_path:
-            subprocess.Popen(["open", str(Path(self.result_md_path).parent)])
+            open_path(str(Path(self.result_md_path).parent))
 
     # ── Pipeline ──────────────────────────────────────────────────────────────
 

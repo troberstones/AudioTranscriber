@@ -4,6 +4,7 @@ Run with: ./run.sh  (or: source venv/bin/activate && python app.py)
 """
 
 import os
+import sys
 import time
 import threading
 from pathlib import Path
@@ -12,6 +13,16 @@ import gradio as gr
 from dotenv import load_dotenv
 
 import diarize
+
+IS_MACOS = sys.platform == "darwin"
+
+def _mlx_available() -> bool:
+    if not IS_MACOS:
+        return False
+    import importlib.util
+    return importlib.util.find_spec("mlx_whisper") is not None
+
+MLX_AVAILABLE = _mlx_available()
 
 load_dotenv()
 
@@ -168,13 +179,17 @@ with gr.Blocks(title="WisperX Meeting Diarizer") as app:
                 ),
             )
 
+            _backend_choices = []
+            if MLX_AVAILABLE:
+                _backend_choices.append("Apple Silicon GPU (MLX)")
+            _backend_choices.append("CPU (faster-whisper)")
             backend_radio = gr.Radio(
                 label="Transcription Backend",
-                choices=["Apple Silicon GPU (MLX)", "CPU (faster-whisper)"],
-                value="Apple Silicon GPU (MLX)",
+                choices=_backend_choices,
+                value=_backend_choices[0],
                 info=(
-                    "MLX uses the M-series GPU/Neural Engine. "
-                    "faster-whisper uses CPU with int8 quantization."
+                    "MLX uses the Apple Silicon GPU/Neural Engine (macOS only). "
+                    "faster-whisper runs on CPU (or CUDA on Windows/Linux)."
                 ),
             )
 
