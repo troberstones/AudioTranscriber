@@ -1,5 +1,9 @@
 # Secrets
 .env
+config.yaml
+
+# Server runtime dirs
+uploads/
 
 # Python
 venv/

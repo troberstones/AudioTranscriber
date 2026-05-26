@@ -18,6 +18,15 @@ import torch
 import whisperx
 from whisperx.diarize import DiarizationPipeline, assign_word_speakers
 
+# PyTorch 2.6 changed torch.load default to weights_only=True, breaking pyannote
+# checkpoints that embed omegaconf objects. Restore pre-2.6 behavior for trusted
+# HuggingFace weights by defaulting weights_only to False when not explicitly set.
+_orig_torch_load = torch.load
+def _torch_load_compat(*args, **kwargs):
+    kwargs["weights_only"] = False  # force — pyannote passes True explicitly
+    return _orig_torch_load(*args, **kwargs)
+torch.load = _torch_load_compat
+
 IS_MACOS   = sys.platform == "darwin"
 IS_WINDOWS = sys.platform == "win32"
 
@@ -186,7 +195,7 @@ def run(
         if on_progress:
             on_progress(frac, msg)
 
-    _, pyannote_device = get_device()
+    whisper_device, pyannote_device = get_device()
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -196,7 +205,7 @@ def run(
     if backend == "mlx":
         import mlx_whisper
         repo = MLX_REPOS.get(model_size, MLX_REPOS["large-v2"])
-        progress(0.05, f"Loading Whisper model (MLX / Apple Silicon GPU)...")
+        progress(0.05, "Loading Whisper model (MLX / Apple Silicon GPU)...")
         result = mlx_whisper.transcribe(
             audio_path,
             path_or_hf_repo=repo,
@@ -208,14 +217,16 @@ def run(
         # Load audio array for alignment (whisperx.align needs numpy array)
         audio = whisperx.load_audio(audio_path)
 
-    else:  # faster-whisper (CPU)
-        progress(0.05, "Loading Whisper model (CPU / faster-whisper)...")
+    else:  # faster-whisper
+        compute_type = "float16" if whisper_device == "cuda" else "int8"
+        device_label = whisper_device.upper()
+        progress(0.05, f"Loading Whisper model (faster-whisper / {device_label})...")
         model = whisperx.load_model(
-            model_size, "cpu", compute_type="int8", language=language
+            model_size, whisper_device, compute_type=compute_type, language=language
         )
-        progress(0.10, "Transcribing audio (CPU)...")
+        progress(0.10, f"Transcribing audio ({device_label})...")
         audio = whisperx.load_audio(audio_path)
-        result = model.transcribe(audio, batch_size=8)
+        result = model.transcribe(audio, batch_size=16 if whisper_device == "cuda" else 8)
         _free(model)
         progress(0.30, "Transcription complete")
         detected_lang = result.get("language", language or "en")
@@ -232,8 +243,8 @@ def run(
     _free(align_model)
 
     # ── Step 3: Diarize ───────────────────────────────────────────────────────
-    progress(0.60, "Running speaker diarization (Apple Silicon GPU)...")
-    diarize_model = DiarizationPipeline(token=hf_token, device=pyannote_device)
+    progress(0.60, f"Running speaker diarization ({pyannote_device.upper()})...")
+    diarize_model = DiarizationPipeline(use_auth_token=hf_token, device=pyannote_device)
 
     diarize_kwargs: dict = {}
     if num_speakers is not None:

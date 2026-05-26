@@ -1,7 +1,9 @@
 whisperx
 torch
 torchaudio
-mlx-whisper
 pyannote.audio>=3.1
-gradio>=4.0
 python-dotenv
+fastapi
+uvicorn[standard]
+python-multipart
+pyyaml
