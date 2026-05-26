@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import diarize
+import summarize
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ async def start_transcribe(
     min_speakers: Optional[int] = Form(None),
     max_speakers: Optional[int] = Form(None),
     include_json: bool = Form(True),
+    generate_summary: bool = Form(False),
 ):
     config = _load_config()
     hf_token = config.get("hf_token", "").strip()
@@ -88,11 +90,26 @@ async def start_transcribe(
                 on_progress=on_progress,
                 **kwargs,
             )
-            _jobs[job_id]["result"] = {
+            result: dict = {
                 "markdown": md_text,
                 "md_path": md_path,
                 "json_path": json_path,
             }
+
+            if generate_summary:
+                on_progress(0.97, "Generating AI summary (Ollama)...")
+                ollama_cfg = config.get("ollama", {})
+                try:
+                    result["summary"] = summarize.run(
+                        transcript=md_text,
+                        model=ollama_cfg.get("model", "gemma4:4b"),
+                        base_url=ollama_cfg.get("base_url", "http://localhost:11434"),
+                    )
+                except Exception as summ_exc:
+                    log.error("Summary failed for job %s: %s", job_id, summ_exc)
+                    result["summary_error"] = str(summ_exc)
+
+            _jobs[job_id]["result"] = result
             _jobs[job_id]["status"] = "done"
         except Exception as exc:
             log.error("Pipeline failed for job %s:\n%s", job_id, traceback.format_exc())
@@ -128,6 +145,10 @@ async def stream_progress(job_id: str):
                 }
                 if result.get("json_path"):
                     payload["json_url"] = f"/download/{job_id}/json"
+                if result.get("summary"):
+                    payload["summary"] = result["summary"]
+                if result.get("summary_error"):
+                    payload["summary_error"] = result["summary_error"]
                 yield f"event: done\ndata: {json.dumps(payload)}\n\n"
                 return
 

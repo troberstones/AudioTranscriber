@@ -285,7 +285,19 @@
       justify-content: space-between;
       margin-bottom: 14px;
     }
-    .results-header .label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .result-tabs { display: flex; gap: 4px; }
+    .result-tab {
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .result-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .dl-buttons { display: flex; gap: 8px; }
     .dl-btn {
       padding: 6px 14px;
@@ -449,6 +461,11 @@
         <input type="checkbox" id="include-json" checked>
         Export JSON with timestamps
       </label>
+
+      <label class="check-label" style="margin-top:10px">
+        <input type="checkbox" id="generate-summary">
+        Generate AI summary <span style="color:var(--muted);font-size:11px">(Ollama / gemma4)</span>
+      </label>
     </div>
 
   </div><!-- /grid-top -->
@@ -466,13 +483,17 @@
 
   <div id="results-section">
     <div class="results-header">
-      <span class="label">Transcript</span>
+      <div class="result-tabs">
+        <button class="result-tab active" data-result="transcript">Transcript</button>
+        <button class="result-tab" data-result="summary" id="summary-tab-btn" style="display:none">AI Summary</button>
+      </div>
       <div class="dl-buttons">
         <a id="dl-md" class="dl-btn" href="#" style="display:none">↓ Markdown</a>
         <a id="dl-json" class="dl-btn" href="#" style="display:none">↓ JSON</a>
       </div>
     </div>
-    <div id="transcript"></div>
+    <div id="transcript" class="result-pane"></div>
+    <div id="summary" class="result-pane" style="display:none"></div>
   </div>
 
   <div id="empty-state">
@@ -512,6 +533,7 @@
   const maxSpeakers     = document.getElementById('max-speakers');
   const numSpeakers     = document.getElementById('num-speakers');
   const includeJson     = document.getElementById('include-json');
+  const generateSummary = document.getElementById('generate-summary');
   const transcribeBtn   = document.getElementById('transcribe-btn');
   const errorBanner     = document.getElementById('error-banner');
   const progressSection = document.getElementById('progress-section');
@@ -519,9 +541,21 @@
   const progressMsg     = document.getElementById('progress-msg');
   const resultsSection  = document.getElementById('results-section');
   const transcriptDiv   = document.getElementById('transcript');
+  const summaryDiv      = document.getElementById('summary');
+  const summaryTabBtn   = document.getElementById('summary-tab-btn');
   const emptyState      = document.getElementById('empty-state');
   const dlMd            = document.getElementById('dl-md');
   const dlJson          = document.getElementById('dl-json');
+
+  // Result tabs
+  document.querySelectorAll('.result-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.result-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.result-pane').forEach(p => p.style.display = 'none');
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.result).style.display = 'block';
+    });
+  });
 
   // ── Tabs ─────────────────────────────────────────────────────────────────────
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -673,6 +707,7 @@
     form.append('language', languageSelect.value);
     form.append('speaker_mode', speakerMode.value);
     form.append('include_json', includeJson.checked ? 'true' : 'false');
+    form.append('generate_summary', generateSummary.checked ? 'true' : 'false');
 
     if (speakerMode.value === 'fixed') {
       form.append('num_speakers', numSpeakers.value);
@@ -753,12 +788,28 @@
     progressSection.style.display = 'none';
     resultsSection.style.display = 'block';
 
+    // Always show transcript tab first
     transcriptDiv.innerHTML = marked.parse(result.markdown || '');
+    transcriptDiv.style.display = 'block';
+    summaryDiv.style.display = 'none';
+    document.querySelectorAll('.result-tab').forEach(b => b.classList.remove('active'));
+    document.querySelector('.result-tab[data-result="transcript"]').classList.add('active');
 
-    dlMd.style.display   = result.md_url   ? '' : 'none';
-    dlJson.style.display  = result.json_url ? '' : 'none';
-    if (result.md_url)   { dlMd.href   = result.md_url;   dlMd.download   = ''; }
-    if (result.json_url) { dlJson.href  = result.json_url; dlJson.download  = ''; }
+    // Summary tab
+    if (result.summary) {
+      summaryDiv.innerHTML = marked.parse(result.summary);
+      summaryTabBtn.style.display = '';
+    } else if (result.summary_error) {
+      summaryDiv.innerHTML = `<p style="color:var(--error)">Summary failed: ${result.summary_error}</p>`;
+      summaryTabBtn.style.display = '';
+    } else {
+      summaryTabBtn.style.display = 'none';
+    }
+
+    dlMd.style.display  = result.md_url  ? '' : 'none';
+    dlJson.style.display = result.json_url ? '' : 'none';
+    if (result.md_url)   { dlMd.href  = result.md_url;  dlMd.download  = ''; }
+    if (result.json_url) { dlJson.href = result.json_url; dlJson.download = ''; }
   }
 
   function showError(msg) {
