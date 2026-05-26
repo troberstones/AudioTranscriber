@@ -32,7 +32,7 @@ _MAX_CHARS = 80_000
 
 def run(
     transcript: str,
-    model: str = "gemma4:4b",
+    model: str = "gemma4:e4b",
     base_url: str = "http://localhost:11434",
 ) -> str:
     client = ollama.Client(host=base_url)

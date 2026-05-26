@@ -12,5 +12,5 @@ hf_token: "hf_your_token_here"
 # Ollama settings for AI summary (optional)
 # Run: ollama pull gemma4:4b
 ollama:
-  model: "gemma4:4b"
+  model: "gemma4:e4b"
   base_url: "http://localhost:11434"
